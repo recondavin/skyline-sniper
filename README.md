@@ -1,6 +1,6 @@
 # Skyline Sniper
 
-A low-poly 3D sniper game that runs in the browser. From a rooftop on the 22nd floor, you free three hostages held at gunpoint on rooftops around the city, one at a time, then clear the remaining hostiles.
+A low-poly 3D sniper game that runs in the browser. From a rooftop on the 22nd floor, you free three hostages held at gunpoint on rooftops around the city, one at a time. The only armed people are their captors.
 
 ![The Ironworks map seen from the sniper's rooftop](screenshots/ironworks.jpg)
 
@@ -20,8 +20,9 @@ It needs an internet connection the first time, for Three.js r128 and the fonts,
 
 - **One hostage at a time.** A short cinematic shows each captor holding a hostage on their roof, then flies back across the city to you. Free that hostage, and the next scene plays. They're revealed nearest first.
 - **The shot.** Each captor keeps the hostage between himself and your tower, so only his head shows above theirs. If you hit a hostage, the mission is over.
-- **The clock.** If a round lands near a captor, a guard nearby goes down, or your exposure passes 75%, that captor gives you 15 seconds.
-- **Exposure.** Every shot raises it, and so do alerted hostiles until they calm down or go down. At 100% you're compromised.
+- **Screams.** Once you've been shown a hostage, they scream every few seconds: close and loud in their scene, fainter and a moment late from your roof. They scream more often once their captor starts counting, and again when a round lands near them or their captor drops.
+- **The clock.** If a round lands near a captor or your exposure passes 75%, that captor gives you 15 seconds.
+- **Exposure.** Every shot raises it, and so does a captor who knows you're out there. At 100% you're compromised.
 - **Ballistics.** Rounds travel at 820 m/s with real drop and wind drift. The range card on the menu gives the hold in mils, and the scope readout shows range and hold for whatever is under the crosshair.
 
 ## Maps
@@ -56,7 +57,7 @@ Pick a map on the menu. The city is generated when the page loads, so switching 
 | M | Mute |
 | Esc / P | Pause |
 
-Touch screens get on-screen buttons.
+The game locks the mouse while you aim, so the cursor stays inside the window. If the browser won't lock it, hold the cursor against an edge of the screen to keep turning that way. Touch screens get on-screen buttons.
 
 ## Credits
 

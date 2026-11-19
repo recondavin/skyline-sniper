@@ -30,6 +30,8 @@ html,body{height:100%;margin:0;overflow:hidden;background:var(--night);color:var
 #stage{position:fixed;inset:0}
 #stage canvas{display:block;width:100%;height:100%}
 body.aiming #stage{cursor:none}
+#edge{position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .2s}
+#edge.on{opacity:1}
 #scope{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
 
 .lbl{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-dim)}
@@ -44,9 +46,8 @@ body.aiming #stage{cursor:none}
 .tc{position:absolute;top:calc(14px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);width:min(34vw,320px)}
 
 #pips{display:flex;gap:4px;margin:7px 0 6px}
-#pips i{display:block;width:9px;height:15px;background:var(--ink);position:relative}
-#pips i.down{background:transparent;outline:1px solid var(--line)}
-#pips i.down::after{content:"";position:absolute;left:-2px;right:-2px;top:50%;height:1.5px;background:var(--danger);transform:rotate(-58deg)}
+#pips i{display:block;width:9px;height:15px;background:transparent;outline:1px solid var(--ink);position:relative}
+#pips i.down{background:var(--ok);outline-color:var(--ok)}
 .sub{font-size:12px;color:var(--ink-dim)}
 .sub b{color:var(--ink);font-weight:600}
 #hostageLine{margin-top:4px;color:var(--amber)}
@@ -203,10 +204,11 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 <canvas id="scope" hidden></canvas>
 <div id="cross" aria-hidden="true" hidden></div>
 <div id="hitmark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+<div id="edge" aria-hidden="true"></div>
 
 <div id="hud" hidden>
   <div class="panel tl">
-    <div class="lbl">Hostiles</div>
+    <div class="lbl">Hostages</div>
     <div id="pips"></div>
     <div class="sub num"><b id="left">8</b> left · <span id="clock">0:00</span></div>
     <div class="sub num" id="hostageLine">Hostage held · plaza</div>
@@ -1853,10 +1855,9 @@ function spawnPost(x,y,z){
 }
 function clearFigures(){ for(const f of figures){ scene.remove(f.root); } figures.length=0; }
 let roofSpots=[];
-function spawnAll(nHostiles){
+// the only armed people are the captors: the mission is the three rescues, nothing else
+function spawnAll(){
   clearFigures();
-  for(let i=0;i<(ZONE?1:2);i++) spawnStreet('hostile');
-  if(ZONE) for(const w of shuffle(ZONE_WALKS.slice()).slice(0,2)) spawnPace('hostile',w[0].clone(),w[1].clone());   // guards walking the piers or the yard
   for(let i=0;i<12;i++) spawnStreet('bystander');
   // hostage roofs: visible rooftops 140-320 m out on different buildings, far enough apart and on
   // different enough bearings that they never stack up in the scope; new ones each mission
@@ -1871,26 +1872,16 @@ function spawnAll(nHostiles){
     if(hs.every(o=>o.bld!==s.bld&&Math.hypot(o.a.x-s.a.x,o.a.z-s.a.z)>=50&&Math.abs(angLerp(0,bearing(o)-bearing(s),1))>0.14)) hs.push(s);
   }
   hs.sort((p,q)=>p.dist-q.dist);                                       // shown to you one at a time, nearest first
-  const picked=[];
-  for(const s of shuffle(roofSpots.slice())){
-    if(picked.length>=(nHostiles>8?3:2)) break;
-    if(hs.some(h=>s===h||Math.hypot(s.a.x-h.a.x,s.a.z-h.a.z)<30)) continue;
-    if(picked.every(p=>Math.abs(p.dist-s.dist)>40)) picked.push(s);
-  }
-  for(const s of picked) spawnPace('hostile',s.a.clone(),s.b.clone());
-  if(ZONE) for(const p of ZONE_POSTS) spawnPost(p.x,p.y,p.z);   // crane house and lighthouse, or furnace platform and conveyor head
-  else { spawnPost(CLOCK.x+(rnd()-0.5)*2,BELFRY,CLOCK.z+1.2); spawnPost(CRANE.x+1.3,CRANE.deck+0.35,CRANE.z+1.3); }
   pairs.length=0;
   if(hs.length) hs.forEach((s,i)=>spawnHostagePair(s,HOSTAGE_LOOKS[i])); else spawnHostagePair(null,HOSTAGE_LOOKS[0]);
-  while(figures.filter(f=>f.kind==='hostile').length<nHostiles) spawnStreet('hostile');
 }
 // Each hostage is held as a shield on a different rooftop (the plaza if no roof is free) by a captor of
 // their own. A pair keeps its own state: held, danger (counting down), rescued or killed.
 const HOSTAGES=3;
 const HOSTAGE_LOOKS=[
-  {female:true,outfit:'coat',top:'#b8322b',who:'the woman in the red coat',desc:'A woman in a red coat',tag:'Red coat',pro:'her'},
-  {female:true,outfit:'coat',top:'#e0ad2e',who:'the woman in the yellow coat',desc:'A woman in a yellow coat',tag:'Yellow coat',pro:'her'},
-  {female:false,outfit:'jacket',top:'#3d7fbf',who:'the man in the blue jacket',desc:'A man in a blue jacket',tag:'Blue jacket',pro:'him'}
+  {female:true,outfit:'coat',top:'#b8322b',who:'the woman in the red coat',desc:'A woman in a red coat',tag:'Red coat',pro:'her',f0:830},
+  {female:true,outfit:'coat',top:'#e0ad2e',who:'the woman in the yellow coat',desc:'A woman in a yellow coat',tag:'Yellow coat',pro:'her',f0:750},
+  {female:false,outfit:'jacket',top:'#3d7fbf',who:'the man in the blue jacket',desc:'A man in a blue jacket',tag:'Blue jacket',pro:'him',f0:480}
 ];
 const pairs=[];
 const cap1=s=>s.replace(/^./,c=>c.toUpperCase());
@@ -1908,7 +1899,7 @@ function spawnHostagePair(spot,look){
     const x0=(rnd()-0.5)*5, z=PLAZA.z1-3.6; a=new V3(x0-2.5,CURB,z); b=new V3(x0+2.5,CURB,z);
     detail='in the plaza under the clock tower';
   }
-  const P={a,b,onRoof:!!spot,detail,look,num:pairs.length+1,revealed:false,state:'held',t:0,seen:!spot,seenT:0,seenCheck:rnd()*0.2};
+  const P={a,b,onRoof:!!spot,detail,look,num:pairs.length+1,revealed:false,state:'held',t:0,seen:!spot,seenT:0,seenCheck:rnd()*0.2,scrT:0.4};
   const captor=spawnPace('hostile',a,b); P.captor=captor; captor.pair=P;
   captor.captor=true; captor.walk=captor.speed=0.5; captor.scale=1.06; captor.root.scale.setScalar(1.06);
   captor.yaw=captor.yawT=yawToward(captor,camera.position);
@@ -1964,13 +1955,40 @@ function executeHostage(P){
   toast('He shot '+P.look.who+'.','bad');
   S.failAt=S.time+2.2; S.failWhy='A captor shot '+P.look.who+' before you could take him out.';
 }
+// Screams: a hostage you've been shown screams every few seconds while held, more often and higher once
+// the captor starts counting, and once more when a round lands close or the captor drops. Heard from
+// wherever the camera is, so close and loud in their scene, late and faint from your roof.
+const _scrR=new V3();
+function hostageScream(P,urgency,kind){
+  if(!AC) return;
+  const lis=(cam||intro)?camB:camera, hp=P.hostage.root.position;
+  const dx=hp.x-lis.position.x, dy=hp.y+1.5-lis.position.y, dz=hp.z-lis.position.z, dist=Math.hypot(dx,dy,dz);
+  lis.updateMatrixWorld(); _scrR.setFromMatrixColumn(lis.matrixWorld,0);
+  const pan=(dx*_scrR.x+dz*_scrR.z)/Math.max(1,Math.hypot(dx,dz));
+  const gain=0.55*clamp(90/(dist+60),0.3,1), lp=clamp(15000-dist*32,2600,15000), delay=Math.min(1.2,dist/343);
+  const f0=P.look.f0*(1+(urgency-1)*0.35)*(0.94+Math.random()*0.12), female=P.look.female;
+  if(kind==='burst'){
+    let at=delay; const n=2+(Math.random()*2|0);
+    for(let i=0;i<n;i++){ const d=0.24+Math.random()*0.16; snd.scream({delay:at,dur:d,f0:f0*(1+i*0.04),gain,lp,pan,female,rise:0.03}); at+=d+0.1+Math.random()*0.1; }
+  }else snd.scream({delay,dur:kind==='short'?0.42:(0.7+Math.random()*0.8)*(urgency>1?1.15:1),f0,gain,lp,pan,female,rise:0.04+Math.random()*0.06});
+}
+function updateScreams(dt){
+  if(!AC) return;
+  for(const P of pairs){
+    if(!P.revealed||!P.hostage.alive||!(P.state==='held'||P.state==='danger')) continue;
+    P.scrT-=dt; if(P.scrT>0) continue;
+    const danger=P.state==='danger';
+    P.scrT=danger?1.4+Math.random()*1.6:4+Math.random()*5;
+    hostageScream(P,danger?1.25:1,Math.random()<(danger?0.45:0.3)?'burst':'long');
+  }
+}
 // a captor who knows you're out there turns the hostage toward your tower and starts counting
 function alertCaptor(P,secs,quiet){
   const f=P.captor; if(!f.alive) return false;
   const was=f.alertT>0;
   f.alertT=14; f.mode='scan'; f.target=null; f.path=[]; f.wait=1; f.yawT=yawToward(f,camera.position);
   if(P.state==='held'){
-    P.state='danger'; P.t=secs;
+    P.state='danger'; P.t=secs; P.scrT=Math.min(P.scrT,0.3);
     if(!quiet) toast("The captor holding "+P.look.who+" knows you're out there. "+secs+' seconds.','bad');
   }
   return !was;
@@ -2324,7 +2342,41 @@ const snd={
   whoosh(dur){ if(!AC) return; const t=AC.currentTime; const f=noise(t,dur,700,0.22,'bandpass',2.5); f.frequency.exponentialRampToValueAtTime(2400,t+dur); },
   reload(){ if(!AC) return; const t=AC.currentTime; noise(t+0.15,0.05,2200,0.25,'bandpass',3); noise(t+1.1,0.06,1600,0.25,'bandpass',3); noise(t+2.2,0.06,2400,0.3,'bandpass',3); },
   click(){ if(!AC) return; noise(AC.currentTime,0.03,3000,0.12,'highpass',1); },
-  dry(){ if(!AC) return; noise(AC.currentTime,0.04,1800,0.25,'bandpass',4); }
+  dry(){ if(!AC) return; noise(AC.currentTime,0.04,1800,0.25,'bandpass',4); },
+  // a scream: two detuned saws at a high pitch with a fast wobble in level for the rasp, through three
+  // vowel formants, plus a breathy edge. From a far roof it arrives late, quieter and duller.
+  scream(o){
+    if(!AC) return;
+    const t=AC.currentTime+(o.delay||0), d=o.dur, f0=o.f0, end=t+d;
+    const out=AC.createGain(); out.gain.value=o.gain;
+    const air=AC.createBiquadFilter(); air.type='lowpass'; air.frequency.value=o.lp||14000; air.Q.value=0.5; out.connect(air);
+    if(AC.createStereoPanner){ const pn=AC.createStereoPanner(); pn.pan.value=clamp(o.pan||0,-0.85,0.85); air.connect(pn); pn.connect(master); } else air.connect(master);
+    const env=AC.createGain(); env.connect(out);
+    env.gain.setValueAtTime(0.0001,t); env.gain.exponentialRampToValueAtTime(1,t+0.05);
+    env.gain.setValueAtTime(1,t+d*0.7); env.gain.exponentialRampToValueAtTime(0.0001,end);
+    const voice=AC.createGain(); voice.gain.value=0.62;
+    const am=AC.createOscillator(); am.frequency.value=50+Math.random()*60; const amg=AC.createGain(); amg.gain.value=0.38; am.connect(amg); amg.connect(voice.gain);
+    const vib=AC.createOscillator(); vib.frequency.value=5+Math.random()*3; const vg=AC.createGain(); vg.gain.value=f0*0.03; vib.connect(vg);
+    const jit=AC.createBufferSource(); jit.buffer=noiseBuf; const jf=AC.createBiquadFilter(); jf.type='lowpass'; jf.frequency.value=16;   // an uneven shake on top of the vibrato
+    const jg=AC.createGain(); jg.gain.value=f0*1.3; jit.connect(jf); jf.connect(jg);                   // about 2% of the pitch
+    jit.start(t,Math.random()*1.5); jit.stop(end+0.05);
+    const srcs=[am,vib];
+    for(const det of [-9,8]){
+      const s=AC.createOscillator(); s.type='sawtooth'; s.detune.value=det; const fr=s.frequency;
+      fr.setValueAtTime(f0*0.7,t); fr.exponentialRampToValueAtTime(f0,t+0.11);
+      fr.linearRampToValueAtTime(f0*(1+(o.rise||0.05)),t+d*0.62); fr.exponentialRampToValueAtTime(f0*0.74,end);
+      vg.connect(fr); jg.connect(fr); s.connect(voice); srcs.push(s);
+    }
+    const F=o.female?[[1050,4.5,1],[1650,6,0.6],[3100,7,0.35]]:[[820,4.5,1],[1350,6,0.55],[2700,7,0.3]];
+    for(const [fq,q,gg] of F){
+      const bp=AC.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=fq*(0.94+Math.random()*0.12); bp.Q.value=q;
+      const g=AC.createGain(); g.gain.value=gg; voice.connect(bp); bp.connect(g); g.connect(env);
+    }
+    const br=AC.createBufferSource(); br.buffer=noiseBuf; const bf=AC.createBiquadFilter(); bf.type='bandpass'; bf.frequency.value=2800; bf.Q.value=0.8;
+    const bg=AC.createGain(); bg.gain.value=0.1; br.connect(bf); bf.connect(bg); bg.connect(env);
+    br.start(t,Math.random()*1.5); br.stop(end+0.05);
+    for(const s of srcs){ s.start(t); s.stop(end+0.05); }
+  }
 };
 
 /* ---------------- game state ---------------- */
@@ -2571,7 +2623,7 @@ const nextPair=()=>pairs.find(P=>!P.revealed&&(P.state==='held'||P.state==='dang
 // one scene per hostage: close on that pair, then fly back to you and hand over facing their roof.
 // The first plays as the mission opens, each later one after you free the previous hostage.
 function startIntro(P,first){
-  S.state='intro'; S.holding=false; setScope(false); P.revealed=true;
+  S.state='intro'; S.holding=false; setScope(false); P.revealed=true; P.scrT=0.35;   // the first scream comes in the close-up
   const last=P.captor, per=3.6, n=1;
   const h=captorHead(last,new V3());
   const eye=poseSniper(h); SNIPER.root.visible=true;
@@ -2638,9 +2690,10 @@ function endIntro(){
   S.state='playing'; el.hud.hidden=false; el.cross.hidden=S.scoped;
   el.touch.hidden=!touchMode; document.body.classList.toggle('touch',touchMode);
   document.body.classList.add('aiming');
-  if(I.first) toast('Spotter: '+WORDS[S.hostilesTotal]+' hostiles in the city. Wind '+S.windSpeed.toFixed(1)+' m/s.');
+  if(I.first) toast('Spotter: wind '+S.windSpeed.toFixed(1)+' m/s.');
   const lead=n<2?'Spotter: ':I.first?'Spotter: first of '+WORDS[n]+'. ':'Spotter: hostage '+P.num+' of '+n+'. ';
   toast(P.onRoof?lead+"That's their roof, dead ahead. Get "+P.look.pro+' in your scope.':"Spotter: they're in the plaza under the clock tower.",'warn');
+  if(!touchMode&&!locked&&!fallback) pauseGame();                       // the mouse came loose during the scene: one click puts you back on the rifle
 }
 
 /* ---------------- actions ---------------- */
@@ -2737,7 +2790,7 @@ function impact(b,hit){
   for(const f of figures){
     if(!f.alive) continue;
     const dd=Math.hypot(f.root.position.x-hit.point.x,f.root.position.z-hit.point.z);
-    if(f.kind==='hostile'&&dd<(f.captor?25:11)){ if(alertFig(f)) newlyAlert++; }
+    if(f.kind==='hostile'&&dd<(f.captor?25:11)){ if(alertFig(f)&&!f.captor) newlyAlert++; }   // a captor announces his own countdown
     else if(f.kind==='bystander'&&dd<14) alertFig(f);
   }
   if(b.tgt&&b.offR!==null){
@@ -2747,6 +2800,11 @@ function impact(b,hit){
     toast('Miss · '+(parts.length?parts.join(', '):'grazed'));
   }else if(b.tgt){ toast(hit.type==='car'?'Miss · round hit a car':'Miss · round hit cover'); }
   else toast('Miss');
+  for(const P of pairs){                                                // a round close by sets the hostage off
+    if(!P.revealed||!P.hostage.alive||!(P.state==='held'||P.state==='danger')) continue;
+    const hp=P.hostage.root.position;
+    if(Math.hypot(hp.x-hit.point.x,hp.z-hit.point.z)<14){ hostageScream(P,1.3,'short'); P.scrT=Math.max(P.scrT,1.2); }
+  }
   if(newlyAlert) toast(newlyAlert>1?newlyAlert+' hostiles heard the impact':'Hostile heard the impact and is on alert','warn');
 }
 function hitFigure(f,part,b,d){
@@ -2762,7 +2820,7 @@ function hitFigure(f,part,b,d){
   }
   hitmarker(head); snd.hit(d/343,head);
   if(f.captor&&f.pair.state!=='killed'){
-    const P=f.pair; P.state='rescued'; S.score+=400; freeHostage(P);
+    const P=f.pair; P.state='rescued'; S.score+=400; freeHostage(P); hostageScream(P,1.3,'short');
     toast(P.look.tag+' rescued · +400','gold');
     // once no hostage you've been shown is still held, the camera goes to the next one
     if(!pairs.some(o=>o.revealed&&(o.state==='held'||o.state==='danger'))&&nextPair()) S.sceneAt=S.time+1.6;
@@ -2770,12 +2828,12 @@ function hitFigure(f,part,b,d){
   if(f.kind==='hostile'){
     S.hostilesLeft--; S.hits++; if(head) S.heads++; S.longest=Math.max(S.longest,d);
     const pts=100+(head?75:0)+Math.round(d/4); S.score+=pts;
-    toast((head?'Headshot':'Hostile down')+' · '+d+' m · +'+pts, head?'gold':'');
+    toast((head?'Headshot':'Captor down')+' · '+d+' m · +'+pts, head?'gold':'');
     let n=0;
     for(const o of figures){
       if(!o.alive) continue;
       const dd=o.root.position.distanceTo(f.root.position);
-      if(o.kind==='hostile'&&dd<(o.captor?40:28)){ if(alertFig(o)) n++; }
+      if(o.kind==='hostile'&&dd<(o.captor?40:28)){ if(alertFig(o)&&!o.captor) n++; }
       else if(o.kind==='bystander'&&dd<22) alertFig(o);
     }
     if(n) toast(n>1?n+' hostiles saw that and are on alert':'A nearby hostile saw that and is on alert','warn');
@@ -2794,7 +2852,7 @@ function startMission(){
   endCam();
   for(const b of bullets) disposeBullet(b); bullets.length=0;
   applyOp(S.op);
-  spawnAll(OPS[S.op].hostiles); newWind();
+  spawnAll(); newWind();
   Object.assign(S,{time:0,score:0,shots:0,hits:0,heads:0,longest:0,locals:0,exposure:0,mag:MAG,cycleT:0,reloadT:0,magIdx:1,breath:1,holding:false,exhausted:false,winAt:0,failAt:0,failWhy:'',warn50:false,warn80:false,hintT:0,sceneAt:0});
   S.hostilesTotal=S.hostilesLeft=figures.filter(f=>f.kind==='hostile').length;
   yaw=0; pitch=START_PITCH; recoil=0;
@@ -2824,7 +2882,6 @@ function endMission(won,why){
     [pairs.length>1?'Hostages':'Hostage',(()=>{ const r=pairs.filter(P=>P.state==='rescued').length, k=pairs.filter(P=>P.state==='killed').length, n=pairs.length;
       return n>1?r+' of '+n+' rescued'+(k?' · '+k+' killed':''):({rescued:'Rescued',killed:'Killed'}[pairs[0].state]||'Still held'); })()],
     ['Time',fmtTime(S.time)],
-    ['Hostiles down',(S.hostilesTotal-S.hostilesLeft)+' of '+S.hostilesTotal],
     ['Accuracy',Math.round(acc*100)+'%'],
     ['Headshots',String(S.heads)],
     ['Longest shot',S.longest?S.longest+' m':'—'],
@@ -2836,7 +2893,7 @@ function endMission(won,why){
   setTimeout(()=>$('again').focus({preventScroll:true}),50);
 }
 function showMenu(){
-  S.state='menu'; $('over').hidden=true; $('menu').hidden=false; el.hud.hidden=true; applyOp(S.op); spawnAll(OPS[S.op].hostiles);
+  S.state='menu'; $('over').hidden=true; $('menu').hidden=false; el.hud.hidden=true; applyOp(S.op); spawnAll();
 }
 function pauseGame(msg){
   if(S.state!=='playing') return;
@@ -2850,21 +2907,53 @@ function resumeGame(){
   $('pause').hidden=true; S.state='playing'; el.cross.hidden=false; document.body.classList.add('aiming');
   if(!touchMode&&!fallback) requestLock(true);
 }
-function requestLock(isResume){
-  if(touchMode||fallback) return;
-  const fail=()=>{
-    if(isResume&&lockWorked){ S.state='playing'; pauseGame('The browser needs a moment before it gives the mouse back. Click again.'); }
-    else { fallback=true; toast('Mouse lock is unavailable here, so aim by moving the mouse without leaving the window.','warn'); }
-  };
-  if(!stage.requestPointerLock){ fail(); return; }
-  try{ const r=stage.requestPointerLock(); if(r&&r.catch) r.catch(fail); }catch(e){ fail(); }
+// Mouse lock holds the cursor inside the game. Where the page can't have it (some embedded views refuse
+// it), aiming falls back to plain mouse movement, and holding the hidden cursor against an edge of the
+// screen keeps the view turning that way, so the cursor never has to leave the window.
+let lockPending=null, lockTries=0;
+function requestLock(isResume,quiet){
+  if(touchMode) return;
+  lockPending={isResume,quiet};
+  if(!stage.requestPointerLock){ lockFailed(); return; }
+  try{ const r=stage.requestPointerLock(); if(r&&r.catch) r.catch(lockFailed); }catch(e){ lockFailed(); }
+}
+function lockFailed(){
+  const p=lockPending; if(!p) return;                                  // the promise and the error event can both report one failure
+  lockPending=null; lockTries++;
+  if(p.isResume&&lockWorked){ S.state='playing'; pauseGame('The browser needs a moment before it gives the mouse back. Click again.'); return; }
+  if(!fallback){
+    fallback=true;
+    if(!p.quiet) toast("Mouse lock isn't available here. Hold the cursor against the edge of the screen to keep turning.",'warn');
+  }
 }
 document.addEventListener('pointerlockchange',()=>{
   locked=document.pointerLockElement===stage;
-  if(locked) lockWorked=true;
+  if(locked){ lockWorked=true; lockPending=null; fallback=false; }
   else if(S.state==='playing'&&!fallback&&!touchMode) pauseGame();
 });
-document.addEventListener('pointerlockerror',()=>{ if(S.state==='playing'&&!lockWorked) fallback=true; });
+document.addEventListener('pointerlockerror',lockFailed);
+// edge turning, for when there's no mouse lock
+let mX=0, mY=0, mIn=false, edgeKey='';
+const edgeEl=$('edge');
+function edgeTurn(dt){
+  let gx=0, gy=0;
+  if(S.state==='playing'&&fallback&&!locked&&!touchMode&&mIn&&!cam){
+    const W=innerWidth, H=innerHeight, bw=Math.max(40,W*0.07), bh=Math.max(34,H*0.08);
+    if(mX<bw) gx=-(1-mX/bw); else if(mX>W-bw) gx=1-(W-mX)/bw;
+    if(mY<bh) gy=-(1-mY/bh); else if(mY>H-bh) gy=1-(H-mY)/bh;
+    gx=clamp(gx,-1,1); gy=clamp(gy,-1,1);
+    const k=camera.fov/BASE_FOV;                                        // slower when scoped, like the mouse itself
+    yaw-=gx*1.6*k*dt; pitch=clamp(pitch-gy*0.9*k*dt,-1.0,0.5);
+  }
+  const key=Math.round(gx*5)+','+Math.round(gy*5);
+  if(key===edgeKey) return;
+  edgeKey=key;
+  const g=[], a=v=>'rgba(236,230,214,'+(0.06+0.14*Math.abs(v)).toFixed(3)+'),transparent ';
+  if(gx<0) g.push('linear-gradient(90deg,'+a(gx)+'9%)'); else if(gx>0) g.push('linear-gradient(270deg,'+a(gx)+'9%)');
+  if(gy<0) g.push('linear-gradient(180deg,'+a(gy)+'11%)'); else if(gy>0) g.push('linear-gradient(0deg,'+a(gy)+'11%)');
+  edgeEl.style.background=g.length?g.join(','):'none'; edgeEl.classList.toggle('on',g.length>0);
+}
+document.documentElement.addEventListener('mouseleave',()=>{ mIn=false; });
 
 /* ---------------- input ---------------- */
 function look(dx,dy,k){
@@ -2873,6 +2962,7 @@ function look(dx,dy,k){
   yaw-=dx*sens; pitch=clamp(pitch-dy*sens,-1.0,0.5);
 }
 document.addEventListener('mousemove',e=>{
+  mX=e.clientX; mY=e.clientY; mIn=true;
   if(S.state!=='playing'||touchMode) return;
   if(!locked&&!fallback) return;
   look(clamp(e.movementX||0,-250,250),clamp(e.movementY||0,-250,250),0.0021);
@@ -2883,6 +2973,7 @@ document.addEventListener('mousedown',e=>{
   if(e.target.closest&&e.target.closest('.overlay,#touch')) return;
   if(cam){ endCam(); return; }
   if(!locked&&!fallback){ requestLock(false); return; }
+  if(fallback&&!locked&&lockTries<3) requestLock(false,true);           // quietly try again: some browsers only refuse the first time
   if(e.button===0) fire(); else if(e.button===2) toggleScope();
 });
 document.addEventListener('contextmenu',e=>e.preventDefault());
@@ -2910,7 +3001,7 @@ document.addEventListener('keydown',e=>{
   }
 });
 document.addEventListener('keyup',e=>{ if(e.code==='ShiftLeft'||e.code==='ShiftRight') S.holding=false; });
-window.addEventListener('blur',()=>{ S.holding=false; });
+window.addEventListener('blur',()=>{ S.holding=false; mIn=false; });
 document.addEventListener('visibilitychange',()=>{ if(document.hidden) pauseGame(); });
 
 let lookId=null, lx=0, ly=0;
@@ -2973,7 +3064,7 @@ tbtn('tBreath',()=>{S.holding=true;$('tBreath').classList.add('on');},()=>{S.hol
     const o=OPS[k], b=document.createElement('button');
     b.type='button'; b.className='op'; b.dataset.op=k; b.setAttribute('role','radio'); b.setAttribute('aria-checked','false');
     b.innerHTML='<b></b><span></span><small></small>';
-    b.children[0].textContent=o.label; b.children[1].textContent=WORDS[o.hostiles][0].toUpperCase()+WORDS[o.hostiles].slice(1)+' hostiles. '+o.meta+'.';
+    b.children[0].textContent=o.label; b.children[1].textContent=cap1(WORDS[HOSTAGES])+' hostages. '+o.meta+'.';
     b.addEventListener('click',()=>applyOp(k));
     box.appendChild(b);
   }
@@ -3036,9 +3127,9 @@ function updatePlaying(dt){
   S.hintT+=dt; if(S.hintT>14) el.hint.classList.add('fade');
   updateHUD(alerted);
   updateRangeReadout();
-  if(S.exposure>=100){ endMission(false,'Too many hostiles were looking for you, and they spotted your rooftop. Exposure hit 100%.'); return; }
+  if(S.exposure>=100){ endMission(false,'The captors were looking for you, and they spotted your rooftop. Exposure hit 100%.'); return; }
   if(S.winAt&&S.time>=S.winAt&&!cam){
-    endMission(true,(pairs.length>1?'Every hostage is safe':'The hostage is safe')+' and every hostile is down.'+(S.locals?' '+WORDS[Math.min(S.locals,12)].replace(/^./,c=>c.toUpperCase())+(S.locals>1?' civilians were':' civilian was')+' hit along the way.':' No civilians were hurt.'));
+    endMission(true,(pairs.length>1?'Every hostage is safe.':'The hostage is safe.')+(S.locals?' '+WORDS[Math.min(S.locals,12)].replace(/^./,c=>c.toUpperCase())+(S.locals>1?' civilians were':' civilian was')+' hit along the way.':' No civilians were hurt.'));
     return;
   }
   // the next hostage's scene, once the bullet cam is done and nothing is still in the air
@@ -3115,6 +3206,8 @@ function frame(now){
     if(waterTex) waterTex.offset.set(T*0.006,T*0.0035);
   }
   if(intro&&S.state==='intro') updateIntro(dt);
+  if(S.state==='playing'||S.state==='intro') updateScreams(S.state==='playing'?sdt:dt);
+  edgeTurn(dt);
   updateCam(dt);
   updateCamera(dt);
   if(cam||intro) sky.position.copy(camB.position);
@@ -3128,7 +3221,7 @@ function start(data){
   $('dope').innerHTML='<tr><th>Range</th>'+rows.map(r=>'<td>'+r+' m</td>').join('')+'</tr><tr><th>Hold</th>'+rows.map(r=>'<td>'+dropMils(r).toFixed(1)+'</td>').join('')+'</tr>';
   refreshOpBests();
   applyOp('haze');
-  spawnAll(OPS.haze.hostiles);
+  spawnAll();
   loadKit().then(()=>applyKit()).catch(e=>console.warn('Village kit models did not load, so simple shapes stand in for them:',e));
   requestAnimationFrame(t=>{ last=t; frame(t); });
 }
