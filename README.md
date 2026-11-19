@@ -1,6 +1,8 @@
-# Highrise Sniper
+# Skyline Sniper
 
 A low-poly 3D sniper game that runs in the browser. From a rooftop on the 22nd floor, you free three hostages held at gunpoint on rooftops around the city, one at a time, then clear the remaining hostiles.
+
+![The Ironworks map seen from the sniper's rooftop](screenshots/ironworks.jpg)
 
 ## Running it
 
@@ -26,6 +28,9 @@ It needs an internet connection the first time, for Three.js r128 and the fonts,
 
 - **Downtown.** Streets and rooftops, a clock tower in the plaza and a building-site crane.
 - **Harbour.** Brick warehouses on the west pier, a container terminal with two ship-to-shore cranes, a moored cargo ship, a breakwater with a lighthouse, and a marina.
+- **Ironworks.** A fenced steelworks with a rail yard, a brick rolling mill, a concrete machine shop, a water tower and a gas holder, a blast furnace with its stoves and conveyor, two smoking chimneys, and cooling towers in the haze.
+
+![The menu with the three maps](screenshots/menu.jpg)
 
 Pick a map on the menu. The city is generated when the page loads, so switching maps reloads the page. Each map keeps its own best scores.
 

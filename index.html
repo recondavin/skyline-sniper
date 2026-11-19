@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 </head>
 <body>
-<title>Highrise Sniper</title>
+<title>Skyline Sniper</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Saira+Stencil+One&display=swap">
@@ -162,7 +162,6 @@ body.touch #hint{display:none}
 kbd{font-family:var(--f-mono);font-size:11px;padding:1px 6px;border:1px solid var(--line);border-bottom-width:2px;background:rgba(236,230,214,.07);color:var(--ink);white-space:nowrap}
 .sect{margin:0 0 8px}
 .ops{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}
-.ops.maps{grid-template-columns:repeat(2,minmax(0,1fr))}
 .op,.mapc{display:flex;flex-direction:column;gap:5px;text-align:left;font-family:var(--f-mono);color:var(--ink);background:rgba(236,230,214,.03);border:1px solid var(--line);padding:11px 12px;cursor:pointer;min-width:0}
 .op:hover,.mapc:hover{border-color:rgba(236,230,214,.42)}
 .op[aria-checked="true"],.mapc[aria-checked="true"]{border-color:var(--amber);background:rgba(240,178,62,.09)}
@@ -259,7 +258,7 @@ button:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 <section id="menu" class="overlay">
   <div class="dossier">
     <div class="eyebrow">Rooftop overwatch · 22nd floor</div>
-    <h1 class="title">Highrise</h1>
+    <h1 class="title">Skyline Sniper</h1>
     <div class="card">
       <div class="cardhead"><span class="lbl">Range card</span><span class="lbl">Bullet drop</span></div>
       <table id="dope"></table>
@@ -338,8 +337,9 @@ const RW=4, BRW=8, SW=6, BSW=10;     // roadway and kerb-to-kerb half-widths; k=
 const CURB=0.18, FLOOR=3.4, SHOP=4.5;
 const FT_W=24, FT_H=FLOOR*8;         // one facade texture covers 8 bays (24 m) by 8 floors
 // Which map to build. The city is generated once at load, so switching maps saves the choice and reloads the page.
-const MAP=(()=>{ let m=''; try{ m=(location.hash.match(/map=(\w+)/)||[])[1]||localStorage.getItem('highrise.map')||''; }catch(e){} return m==='harbour'?'harbour':'city'; })();
-const HARBOUR=MAP==='harbour';
+const MAP=(()=>{ let m=''; try{ m=(location.hash.match(/map=(\w+)/)||[])[1]||localStorage.getItem('highrise.map')||''; }catch(e){} return m==='harbour'||m==='works'?m:'city'; })();
+const HARBOUR=MAP==='harbour', WORKS=MAP==='works', ZONE=HARBOUR||WORKS;   // ZONE: the far blocks are replaced by a district of their own
+const MAP_NAMES={city:'Downtown',harbour:'Harbour',works:'Ironworks'};
 // harbour: open water where the downtown blocks were, beyond the quay road; the city carries on either side and across the bay
 const WATER={x0:-560,x1:560,z0:-872,z1:-200,y:-2.4};
 const PIERS=HARBOUR?[
@@ -348,9 +348,11 @@ const PIERS=HARBOUR?[
   {x0:-432,x1:-344,z0:-392,z1:-200},                 // far west pier: sheds
   {x0:-330,x1:146,z0:-532,z1:-518,top:1.6}           // breakwater with a lighthouse on its end
 ]:[];
-const inBasin=(x,z)=>HARBOUR&&x>WATER.x0&&x<WATER.x1&&z>WATER.z0&&z<WATER.z1;
+// the district beyond the quay road: the harbour basin, or the ironworks yard
+const inZone=(x,z)=>ZONE&&x>WATER.x0&&x<WATER.x1&&z>WATER.z0&&z<WATER.z1;
+const inBasin=(x,z)=>HARBOUR&&inZone(x,z);
 const pierAt=(x,z)=>PIERS.find(p=>x>p.x0&&x<p.x1&&z>p.z0&&z<p.z1);
-const KW=4, MW0=0, MW1=HARBOUR?2:8;   // street nodes people walk between (only the streets south of the quay in the harbour)
+const KW=4, MW0=0, MW1=ZONE?2:8;   // street nodes people walk between (only the streets south of the harbour or the ironworks)
 const ROOF=66;                       // the player's tower
 const PLAZA={x0:-46+RW,x1:46-RW,z0:Z0-6*P+RW,z1:Z0-5*P-RW};
 const CLOCK={x:0,z:Z0-5.5*P};
@@ -607,9 +609,9 @@ function kitLot(name,x,z){
   kitLots.push({name,x,z,ph});
 }
 let CRANE=null;
-const isPlaza=(x,z)=>!HARBOUR&&x>PLAZA.x0&&x<PLAZA.x1&&z>PLAZA.z0&&z<PLAZA.z1;
+const isPlaza=(x,z)=>!ZONE&&x>PLAZA.x0&&x<PLAZA.x1&&z>PLAZA.z0&&z<PLAZA.z1;
 function surfaceY(x,z){
-  if(inBasin(x,z)){ const p=pierAt(x,z); return p?(p.top||0):WATER.y; }   // pier decks, otherwise the water
+  if(inZone(x,z)){ if(!HARBOUR) return 0; const p=pierAt(x,z); return p?(p.top||0):WATER.y; }   // pier decks or water; the ironworks yard is flat
   if(isPlaza(x,z)) return CURB;
   const k=Math.round(x/P), dx=Math.abs(x-k*P);
   if(dx<(k===0?BRW:RW)) return 0;
@@ -629,7 +631,7 @@ function floorsFor(xc,zc,outer){
     if(wr()<big*0.55) fl+=10+Math.floor(wr()*20);
   }
   if(zc>-140&&zc<10&&Math.abs(xc)<240) fl=Math.min(fl,4+Math.floor(wr()*2));
-  if(HARBOUR&&zc<-130&&zc>-200&&Math.abs(xc)<560) fl=Math.min(fl,3+Math.floor(wr()*3));   // low-rise waterfront, so you can see over it to the docks
+  if(ZONE&&zc<-130&&zc>-200&&Math.abs(xc)<560) fl=Math.min(fl,3+Math.floor(wr()*3));   // low-rise waterfront, so you can see over it to the docks
   return Math.min(fl,outer?40:16);
 }
 function addBuilding(x0,x1,z0,z1,fl,outer){
@@ -752,13 +754,13 @@ B.roof.top(TW.x0,ROOF,TW.z0,TW.x1,TW.z1,ROOFC[0]);
   antennas.push({x:10,y:ROOF,z:-11,h:12});
 }
 
-QUAD_CULL=HARBOUR?inBasin:null;
+QUAD_CULL=ZONE?inZone:null;
 for(let c=-20;c<=19;c++) for(let r=-18;r<=24;r++){
   const x0=c*P, x1=(c+1)*P, z0=lineZ(r+1), z1=lineZ(r);
   const sx0=x0+(c===0?BRW:RW), sx1=x1-(c===-1?BRW:RW), sz0=z0+RW, sz1=z1-RW;
   const lx0=x0+(c===0?BSW:SW), lx1=x1-(c===-1?BSW:SW), lz0=z0+SW, lz1=z1-SW;
   const outer=c<-5||c>4||r>8||r<-2;
-  if(HARBOUR&&x1>WATER.x0&&x0<WATER.x1&&z0<WATER.z1&&z1>WATER.z0) continue;      // this block is harbour water now
+  if(ZONE&&x1>WATER.x0&&x0<WATER.x1&&z0<WATER.z1&&z1>WATER.z0) continue;         // this block belongs to the harbour or the ironworks now
   if((c===-1||c===0)&&r===-2){                                                      // tower forecourt
     if(c===-1){
       slab(-46+RW,46-RW,sz0,sz1,C_SIDEWALK);
@@ -940,9 +942,9 @@ const nearCross=(v,lines)=>lines.some(l=>Math.abs(v-l.at)<l.w+4);
     }
   }
 }
-// the street grid ran across the harbour basin; take its cars, lamps, trees, signals and kit props back out of the water
-if(HARBOUR){
-  const keep=(list,low)=>{ for(let i=list.length-1;i>=0;i--){ const o=list[i]; if(inBasin(o.x,o.z)&&(!low||(o.y||0)<1)) list.splice(i,1); } };
+// the street grid ran across the harbour or the ironworks; take its cars, lamps, trees, signals and kit props back out
+if(ZONE){
+  const keep=(list,low)=>{ for(let i=list.length-1;i>=0;i--){ const o=list[i]; if(inZone(o.x,o.z)&&(!low||(o.y||0)<1)) list.splice(i,1); } };
   keep(cars); keep(lamps); keep(sigPoles); keep(sigHeads); keep(treesList,true); keep(kitProps,true);
 }
 QUAD_CULL=null;
@@ -990,7 +992,7 @@ if(CRANE){
 // clock tower
 const BELFRY=22;
 let clockFace=null;
-if(!HARBOUR){
+if(!ZONE){
   const stone=col('#cdbf9f'), stoneD=col('#b8aa8a'), cx=CLOCK.x, cz=CLOCK.z, h=3.5;
   B.plain.box(cx-4.2,CURB,cz-4.2,cx+4.2,CURB+1.2,cz+4.2,stoneD); addSolidBox(cx-4.2,0,cz-4.2,cx+4.2,CURB+1.2,cz+4.2);
   B.plain.box(cx-h,CURB,cz-h,cx+h,BELFRY,cz+h,stone); addSolidBox(cx-h,0,cz-h,cx+h,BELFRY,cz+h);
@@ -1017,7 +1019,23 @@ if(!HARBOUR){
 // Water, quay walls, three piers and a breakwater; brick warehouses, a container terminal with two
 // ship-to-shore cranes, a cargo ship moored alongside, a lighthouse, sheds and a small marina.
 let lanternMat=null, waterTex=null;
-const containers=[], bollards=[], HARBOUR_POSTS=[], PIER_WALKS=[];
+// a warehouse or factory hall is a flat-roofed block with a parapet and loading doors on the side facing your tower
+function zoneHall(x0,x1,z0,z1,H,style,desc,mat){
+  const tint=mat?null:pick(TINTS[style]);
+  if(mat) B.plain.sides(x0,0,z0,x1,H,z1,mat); else B[style].sides(x0,0,z0,x1,H,z1,tint,FT_W,FT_H,uOff(),vOff());
+  B.roof.top(x0,H,z0,x1,z1,pick(ROOFC));
+  const pc=col('#9b958a'), pt=0.35, ph=1.0;
+  B.plain.box(x0,H,z0,x1,H+ph,z0+pt,pc); B.plain.box(x0,H,z1-pt,x1,H+ph,z1,pc); B.plain.box(x0,H,z0+pt,x0+pt,H+ph,z1-pt,pc); B.plain.box(x1-pt,H,z0+pt,x1,H+ph,z1-pt,pc);
+  if(!mat) ring(x0,x1,z0,z1,H-0.6,H,0.35,style==='brick'?STONE:col('#b3ada0'));
+  for(let x=x0+5;x<x1-6;x+=11) B.plain.box(x,0,z1,x+4.2,5.2,z1+0.18,col('#3b3a35'));
+  addSolidBox(x0,0,z0,x1,H+ph,z1);
+  const cx=(x0+x1)/2, cz=(z0+z1)/2;
+  for(let i=0;i<3;i++){ const side=i%2?1:-1, z=cz+side*(3+wr()*Math.max(0,(z1-z0)/2-5)), x=x0+3+wr()*(x1-x0-6); acUnits.push({x,y:H,z,ry:0}); addSolidBox(x-1,H,z-1,x+1,H+1.2,z+1); }
+  const b={x:cx,z:cz,w:x1-x0,d:z1-z0,top:H,fl:Math.round(H/FLOOR),outer:false,style,desc};
+  buildings.push(b); return b;
+}
+
+const containers=[], bollards=[], wagons=[], ZONE_POSTS=[], ZONE_WALKS=[];
 if(HARBOUR){
   const WY=WATER.y, CONC=col('#b3ada0'), PAVE=col('#bdb6a8'), ROCK=col('#8d8a83');
   waterTex=makeTex(256,256,(g,w,h)=>{
@@ -1042,27 +1060,13 @@ if(HARBOUR){
   for(const x of [-96,-62,70,104]) kitProp('bench',x,WATER.z1+4.2,Math.PI,0.06);
   kitProp('phone_box',-108,WATER.z1+5,Math.PI,0.06);
 
-  // a warehouse is a flat-roofed block with a parapet and loading doors on the side facing your tower
-  const ware=(x0,x1,z0,z1,H,style,desc,mat)=>{
-    const tint=mat?null:pick(TINTS[style]);
-    if(mat) B.plain.sides(x0,0,z0,x1,H,z1,mat); else B[style].sides(x0,0,z0,x1,H,z1,tint,FT_W,FT_H,uOff(),vOff());
-    B.roof.top(x0,H,z0,x1,z1,pick(ROOFC));
-    const pc=col('#9b958a'), pt=0.35, ph=1.0;
-    B.plain.box(x0,H,z0,x1,H+ph,z0+pt,pc); B.plain.box(x0,H,z1-pt,x1,H+ph,z1,pc); B.plain.box(x0,H,z0+pt,x0+pt,H+ph,z1-pt,pc); B.plain.box(x1-pt,H,z0+pt,x1,H+ph,z1-pt,pc);
-    if(!mat) ring(x0,x1,z0,z1,H-0.6,H,0.35,style==='brick'?STONE:CONC);
-    for(let x=x0+5;x<x1-6;x+=11) B.plain.box(x,0,z1,x+4.2,5.2,z1+0.18,col('#3b3a35'));
-    addSolidBox(x0,0,z0,x1,H+ph,z1);
-    const cx=(x0+x1)/2, cz=(z0+z1)/2;
-    for(let i=0;i<3;i++){ const side=i%2?1:-1, z=cz+side*(3+wr()*Math.max(0,(z1-z0)/2-5)), x=x0+3+wr()*(x1-x0-6); acUnits.push({x,y:H,z,ry:0}); addSolidBox(x-1,H,z-1,x+1,H+1.2,z+1); }
-    const b={x:cx,z:cz,w:x1-x0,d:z1-z0,top:H,fl:Math.round(H/FLOOR),outer:false,style,desc};
-    buildings.push(b); return b;
-  };
+  const ware=zoneHall;
   // west pier: old brick warehouses
   ware(-180,-130,-262,-214,13,'brick','the brick warehouse at the head of the west pier');
   ware(-180,-130,-330,-282,16.5,'brick','the tall brick warehouse on the west pier');
   ware(-180,-130,-410,-350,11,'concrete','the concrete warehouse on the west pier');
   ware(-180,-130,-458,-424,9,'brick','the warehouse at the end of the west pier');
-  PIER_WALKS.push([new V3(-176,0,-272),new V3(-134,0,-272)],[new V3(-176,0,-340),new V3(-134,0,-340)],[new V3(-127,0,-216),new V3(-127,0,-256)]);
+  ZONE_WALKS.push([new V3(-176,0,-272),new V3(-134,0,-272)],[new V3(-176,0,-340),new V3(-134,0,-340)],[new V3(-127,0,-216),new V3(-127,0,-256)]);
   // far west pier: corrugated sheds
   ware(-426,-350,-262,-212,9,'concrete','the grey shed on the far west pier',col('#7f8a86'));
   ware(-426,-350,-332,-278,11,'concrete','the rust-red shed on the far west pier',col('#8a5f48'));
@@ -1086,7 +1090,7 @@ if(HARBOUR){
     }
   }
   for(const [x,z] of [[82,-214],[82,-330],[156,-270],[156,-388]]){ B.plain.box(x-0.3,0,z-0.3,x+0.3,26,z+0.3,col('#55585a')); B.plain.box(x-1.6,26,z-0.5,x+1.6,27.2,z+0.5,col('#3e4143')); addSolidBox(x-0.3,0,z-0.3,x+0.3,27.2,z+0.3); }
-  PIER_WALKS.push([new V3(79,0,-232),new V3(79,0,-300)],[new V3(92,0,-418),new V3(150,0,-418)]);
+  ZONE_WALKS.push([new V3(79,0,-232),new V3(79,0,-300)],[new V3(92,0,-418),new V3(150,0,-418)]);
   // ship-to-shore cranes along the pier's water edge, booms out over the ship
   const CR=col('#2f5e8c'), CRd=col('#264b70'), CAB=col('#e4e0d6');
   for(const zc of [-262,-322]){
@@ -1099,7 +1103,7 @@ if(HARBOUR){
     const lm=new THREE.LineBasicMaterial({color:'#2a2c2e'});
     for(const [ax,ay,bx,by] of [[60,52,-16,36.4],[60,52,98,36.4],[60,50,30,36.4]]) scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new V3(ax,ay,zc),new V3(bx,by,zc)]),lm));
   }
-  HARBOUR_POSTS.push(new V3(81,41.02,-262+1.5));
+  ZONE_POSTS.push(new V3(81,41.02,-262+1.5));
   // the cargo ship: dark hull with a red boot-top, a wedge bow, containers on deck and the bridge aft
   const SX0=16, SX1=40, SXC=28, SZS=-226, SZB=-362, SZT=-394, DECK=9, HB=WY-0.6, BT=WY+1.1;
   const HULL=col('#232f38'), BOOT=col('#8e2f25'), DECKC=col('#5f6a5c'), WHITE=col('#e9e6de'), GLASS=col('#26333b');
@@ -1144,7 +1148,7 @@ if(HARBOUR){
     add(flatGeo(new THREE.ConeGeometry(2.6,2.2,12)),'#b23a2c',22.3);
     addSolidBox(lx-3,0,lz-3,lx+3,23.4,lz+3);
     const dx=0-lx, dz=(TW.z0+0.1)-lz, L=Math.hypot(dx,dz);                 // the guard stands on the side facing your tower
-    HARBOUR_POSTS.push(new V3(lx+dx/L*3.6,18.42,lz+dz/L*3.6));
+    ZONE_POSTS.push(new V3(lx+dx/L*3.6,18.42,lz+dz/L*3.6));
   }
   // marina: floating pontoons with small boats
   const BOAT=['#f2efe8','#e6e2d8','#2f4d6b','#a23b2c'];
@@ -1157,6 +1161,114 @@ if(HARBOUR){
       if(wr()<0.5) B.plain.box(bx-0.08,WY+1.1,z-0.08,bx+0.08,WY+10+wr()*3,z+0.08,col('#c9c6bd'));
     }
   }
+}
+
+/* ---------------- the ironworks map ---------------- */
+// Behind a chain-link fence: a rail yard of freight wagons, brick and sawtooth-roofed halls, a water tower and a
+// gas holder, a pipe rack and a conveyor up to the blast furnace, two smoking chimneys, and cooling towers in the haze.
+if(WORKS){
+  const STEEL=col('#55595b'), STEELD=col('#3d4043'), BALLAST=col('#7a7366'), RAIL=col('#4a4440');
+  const mesh=(geo,c,x,y,z)=>{ const m=new THREE.Mesh(geo,typeof c==='string'?lam(c):c); m.position.set(x,y,z); m.castShadow=true; m.receiveShadow=true; scene.add(m); return m; };
+  const railing=(x,y,z,r)=>{ const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,1.0,24,1,true),new THREE.MeshLambertMaterial({color:'#3a3d3f',side:THREE.DoubleSide})); m.position.set(x,y+0.5,z); scene.add(m); };
+  const UP=new V3(0,1,0);
+  const pipe=(a,b,r,c)=>{ const d=new V3().subVectors(b,a), m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,d.length(),10),lam(c)); m.position.copy(a).addScaledVector(d,0.5); m.quaternion.setFromUnitVectors(UP,d.normalize()); m.castShadow=true; scene.add(m); return m; };
+  // chain-link fence along the quay road, with a red-and-white barrier at the gate on the boulevard
+  { const c=document.createElement('canvas'); c.width=32; c.height=32; const g=c.getContext('2d'); g.strokeStyle='#ffffff'; g.lineWidth=2.2; g.beginPath(); g.moveTo(0,0); g.lineTo(32,32); g.moveTo(32,0); g.lineTo(0,32); g.stroke();
+    const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(137,1.3); t.anisotropy=ANISO;
+    const fm=new THREE.MeshLambertMaterial({color:'#8c9092',map:t,alphaTest:0.5,side:THREE.DoubleSide});
+    for(const [x0,x1] of [[WATER.x0,-12],[12,WATER.x1]]){
+      const f=new THREE.Mesh(new THREE.PlaneGeometry(x1-x0,2.6),fm); f.position.set((x0+x1)/2,1.3,WATER.z1-2); scene.add(f);
+      for(let x=x0;x<=x1;x+=4) B.plain.box(x-0.06,0,WATER.z1-2.06,x+0.06,2.7,WATER.z1-1.94,STEEL);
+    }
+    for(let x=-11;x<11;x+=2) B.plain.box(x,0.95,WATER.z1-2.1,x+1,1.12,WATER.z1-1.9,col(((x+11)/2)%2?'#efece4':'#c23b2c'));
+    B.plain.box(12.5,0,WATER.z1+0.5,16.5,3,WATER.z1+4.5,col('#d9d3c4')); B.plain.box(12.3,3,WATER.z1+0.3,16.7,3.3,WATER.z1+4.7,STEELD);   // gatehouse
+  }
+  // rail yard: five tracks of ballast and rails, with runs of boxcars and hoppers (a gap kept at the boulevard crossing)
+  const TRACKS=[-210,-216,-222,-228,-234], WC=['#7c4a32','#5b3a2a','#3f4a52','#6b6f72','#8a6a3a','#4e5a46'];
+  for(const z of TRACKS){
+    B.plain.box(WATER.x0,0,z-1.6,WATER.x1,0.22,z+1.6,BALLAST);
+    for(const s of [-0.72,0.72]) B.plain.box(WATER.x0,0.22,z+s-0.04,WATER.x1,0.36,z+s+0.04,RAIL);
+    let x=WATER.x0+10+wr()*30;
+    while(x<WATER.x1-20){
+      if(wr()<0.72&&Math.abs(x)>18){ const kind=wr()<0.65?0:1; wagons.push({x,z,kind,c:pick(WC)}); addSolidBox(x-7,0.4,z-1.5,x+7,kind?3.5:4.4,z+1.5); }
+      x+=15+(wr()<0.15?20+wr()*40:0);
+    }
+  }
+  // the water tower by the yard: tank on four braced legs, flat roof with a railing
+  { const cx=-70, cz=-252, leg=24, top=32;
+    for(const [lx,lz] of [[-5,-5],[5,-5],[-5,5],[5,5]]){ B.plain.box(cx+lx-0.45,0,cz+lz-0.45,cx+lx+0.45,leg,cz+lz+0.45,STEEL); addSolidBox(cx+lx-0.45,0,cz+lz-0.45,cx+lx+0.45,leg,cz+lz+0.45); }
+    for(const y of [8,16]){ B.plain.box(cx-5,y,cz-5.2,cx+5,y+0.4,cz-4.8,STEEL); B.plain.box(cx-5,y,cz+4.8,cx+5,y+0.4,cz+5.2,STEEL); B.plain.box(cx-5.2,y,cz-5,cx-4.8,y+0.4,cz+5,STEEL); B.plain.box(cx+4.8,y,cz-5,cx+5.2,y+0.4,cz+5,STEEL); }
+    mesh(new THREE.CylinderGeometry(6.6,6.6,top-leg,24),'#9da3a6',cx,(leg+top)/2,cz);
+    mesh(new THREE.CylinderGeometry(6.9,6.9,0.3,24),'#6f7477',cx,top+0.15,cz);
+    railing(cx,top+0.3,cz,6.6);
+    B.plain.box(cx-0.3,0,cz+5.6,cx+0.3,top,cz+6.2,STEELD);
+    addSolidBox(cx-6.6,leg,cz-6.6,cx+6.6,top+0.3,cz+6.6);
+    buildings.push({x:cx,z:cz,w:9,d:9,top:top+0.3,fl:9,outer:false,style:'concrete',desc:'the water tower by the rail yard'});
+  }
+  // the gas holder: a green drum inside its guide frame, flat top with a railing
+  { const cx=200, cz=-262, r=20, h=30;
+    mesh(new THREE.CylinderGeometry(r,r,h,36),'#6e7a6e',cx,h/2,cz);
+    mesh(new THREE.CylinderGeometry(r+0.3,r+0.3,0.4,36),'#565f57',cx,h+0.2,cz);
+    railing(cx,h+0.4,cz,r-0.2);
+    for(let i=0;i<12;i++){ const a=i/12*TAU, x=cx+Math.sin(a)*(r+1.2), z=cz+Math.cos(a)*(r+1.2); B.plain.box(x-0.5,0,z-0.5,x+0.5,h+6,z+0.5,STEEL); }
+    for(const y of [h*0.5,h+6]){ const ring=new THREE.Mesh(new THREE.TorusGeometry(r+1.2,0.35,4,36),lam('#4a4f51')); ring.rotation.x=Math.PI/2; ring.position.set(cx,y,cz); scene.add(ring); }
+    addSolidBox(cx-r,0,cz-r,cx+r,h+0.4,cz+r);
+    buildings.push({x:cx,z:cz,w:26,d:26,top:h+0.4,fl:9,outer:false,style:'concrete',desc:'the top of the gas holder'});
+  }
+  // factory halls: a brick rolling mill, a sawtooth-roofed weaving hall, a concrete machine shop, stores and the coke ovens
+  const ware=zoneHall;
+  ware(-210,-130,-305,-262,14,'brick','the brick rolling mill');
+  ware(30,130,-310,-264,12,'concrete','the concrete machine shop');
+  ware(-262,-200,-420,-360,9,'concrete','the grey stores shed',col('#7f8a86'));
+  const coke=ware(60,200,-412,-374,9,'brick','the coke-oven block');
+  for(let x=68;x<196;x+=9) B.plain.box(x,coke.top,-375.8,x+1.6,coke.top+4,-374.4,col('#5a3b2e'));
+  { const x0=-110, x1=-30, z0=-320, z1=-264, H=10, st='brick';
+    B[st].sides(x0,0,z0,x1,H,z1,pick(TINTS[st]),FT_W,FT_H,uOff(),vOff());
+    const roofC=col('#8a8379'), glass=col('#5b6b74'), wallC=STYLE_BASE[st].clone(), Ls=Math.hypot(8,3);
+    for(let zt=z1;zt-8>=z0-0.01;zt-=8){
+      B.plain.quad((x0+x1)/2,H+1.5,zt-4, 1,0,0, 0,3/Ls,-8/Ls, x1-x0,Ls,1,1,roofC);
+      B.plain.quad((x0+x1)/2,H+1.5,zt-8, -1,0,0, 0,1,0, x1-x0,3,1,1,glass);
+      B.plain.tri(new V3(x1,H,zt),new V3(x1,H,zt-8),new V3(x1,H+3,zt-8),wallC);
+      B.plain.tri(new V3(x0,H,zt),new V3(x0,H+3,zt-8),new V3(x0,H,zt-8),wallC);
+    }
+    addSolidBox(x0,0,z0,x1,H+3,z1);
+  }
+  // pipe rack across the works
+  for(let x=-240;x<=180;x+=15){ B.plain.box(x-0.3,0,-346.6,x+0.3,7.2,-346,STEEL); B.plain.box(x-0.3,0,-344,x+0.3,7.2,-343.4,STEEL); B.plain.box(x-0.3,7.2,-346.6,x+0.3,7.6,-343.4,STEELD); }
+  pipe(new V3(-240,8.3,-345.8),new V3(180,8.3,-345.8),0.75,'#8a5a3c'); pipe(new V3(-240,8.3,-344.2),new V3(180,8.3,-344.2),0.6,'#b5b8b6');
+  // blast furnace with its platform, downcomer and dust catcher, three hot-blast stoves, and the ore conveyor
+  { const fx=-40, fz=-470;
+    mesh(new THREE.CylinderGeometry(6,7.5,42,18),'#4b4f52',fx,21,fz);
+    mesh(flatGeo(new THREE.ConeGeometry(6,6,18)),'#3d4043',fx,45,fz);
+    mesh(new THREE.CylinderGeometry(10,10,0.5,22),'#3a3d3f',fx,30,fz); railing(fx,30.25,fz,9.8);
+    addSolidBox(fx-7.5,0,fz-7.5,fx+7.5,48,fz+7.5); addSolidBox(fx-10,29.75,fz-10,fx+10,30.25,fz+10);
+    for(const sx of [16,27,38]){ mesh(new THREE.CylinderGeometry(4.5,4.5,32,16),'#6a6e70',fx+sx,16,fz); mesh(new THREE.SphereGeometry(4.5,16,8,0,TAU,0,Math.PI/2),'#5e6264',fx+sx,32,fz); addSolidBox(fx+sx-4.5,0,fz-4.5,fx+sx+4.5,36.5,fz+4.5); }
+    pipe(new V3(fx,44,fz),new V3(fx-15,22,fz+7),1.4,'#454a4d'); mesh(new THREE.CylinderGeometry(4,4,18,14),'#5a5e60',fx-16,9,fz+8); addSolidBox(fx-20,0,fz+4,fx-12,18,fz+12);
+    pipe(new V3(fx+16,26,fz-5.5),new V3(fx,26,fz-5.5),1.0,'#7a6a5a');
+    B.plain.box(-68,0,-338,-56,10,-326,col('#7d7468')); addSolidBox(-68,0,-338,-56,10,-326);   // ore bunker
+    const a=new V3(-62,10,-333), b=new V3(-45,38,-458), d=new V3().subVectors(b,a);
+    const belt=new THREE.Mesh(new THREE.BoxGeometry(3.6,2.6,d.length()),lam('#8d8a83')); belt.position.copy(a).addScaledVector(d,0.5); belt.lookAt(b); belt.castShadow=true; scene.add(belt);
+    for(const t of [0.25,0.5,0.75]){ const p=a.clone().addScaledVector(d,t); B.plain.box(p.x-0.4,0,p.z-0.4,p.x+0.4,p.y-1.3,p.z+0.4,STEEL); }
+    B.plain.box(-49,36,-462,-39,42,-454,col('#9a8f80')); addSolidBox(-49,36,-462,-39,42,-454);   // conveyor head house
+    const dx=0-fx, dz=(TW.z0+0.1)-fz, L=Math.hypot(dx,dz);
+    ZONE_POSTS.push(new V3(fx+dx/L*8.6,30.27,fz+dz/L*8.6), new V3(-44,42.02,-456.5));
+  }
+  // chimneys, trailing smoke
+  const smoke=new THREE.SpriteMaterial({map:cloudMat.map,color:'#9a958d',transparent:true,opacity:0.5,depthWrite:false});
+  for(const [x,z] of [[112,-470],[142,-476]]){
+    mesh(new THREE.CylinderGeometry(3.1,4.3,88,16),'#7a4a36',x,44,z); mesh(new THREE.CylinderGeometry(3.25,3.25,3,16),'#3b3532',x,85,z);
+    addSolidBox(x-4.3,0,z-4.3,x+4.3,88,z+4.3);
+    for(let i=0;i<4;i++){ const s=new THREE.Sprite(smoke); s.position.set(x+8+i*12,94+i*5,z-4-i*6); s.scale.set(26+i*14,14+i*7,1); scene.add(s); }
+  }
+  // cooling towers out in the haze, with steam
+  const steam=new THREE.SpriteMaterial({map:cloudMat.map,color:'#ffffff',transparent:true,opacity:0.6,depthWrite:false});
+  const prof=[[40,0],[35,18],[29.5,42],[26.5,62],[27,76],[30,88]].map(([r,y])=>new THREE.Vector2(r,y));
+  for(const [x,z] of [[-250,-770],[-140,-800]]){
+    const m=new THREE.Mesh(new THREE.LatheGeometry(prof,32),new THREE.MeshLambertMaterial({color:'#c2bdb2',side:THREE.DoubleSide})); m.position.set(x,0,z); m.castShadow=true; scene.add(m);
+    for(let i=0;i<3;i++){ const s=new THREE.Sprite(steam); s.position.set(x+i*10,100+i*12,z-i*8); s.scale.set(70+i*20,34+i*10,1); scene.add(s); }
+  }
+  for(const [x,z] of [[-18,-250],[-150,-330],[162,-330]]){ B.plain.box(x-0.3,0,z-0.3,x+0.3,26,z+0.3,col('#55585a')); B.plain.box(x-1.6,26,z-0.5,x+1.6,27.2,z+0.5,col('#3e4143')); addSolidBox(x-0.3,0,z-0.3,x+0.3,27.2,z+0.3); }
+  ZONE_WALKS.push([new V3(-200,0,-250),new V3(-140,0,-250)],[new V3(-120,0,-272),new V3(-120,0,-312)],[new V3(10,0,-270),new V3(10,0,-318)],[new V3(140,0,-326),new V3(185,0,-326)]);
 }
 
 /* ---------------- build merged city meshes ---------------- */
@@ -1217,11 +1329,14 @@ const boxCars=[], boxLamps=[];
   inst(new THREE.CylinderGeometry(0.08,0.1,4.6,6).translate(0,2.3,0),lam('#3a3c3a'),sigPoles,(p,i,im)=>{ M4.makeTranslation(p.x,CURB,p.z); im.setMatrixAt(i,M4); },false);
   inst(new THREE.BoxGeometry(0.36,0.98,0.26),lam('#262725'),sigHeads,(h,i,im)=>{ EU.set(0,h.ry,0); Q.setFromEuler(EU); M4.compose(PV.set(h.x+Math.sin(h.ry)*0.2,CURB+3.9,h.z+Math.cos(h.ry)*0.2),Q,ONE); im.setMatrixAt(i,M4); },false);
   sigLamp=inst(new THREE.BoxGeometry(0.26,0.26,0.05),new THREE.MeshBasicMaterial({color:'#ffffff'}),sigHeads,(h,i,im)=>{ im.setColorAt(i,TC.set('#ff3a26')); },false);
-  if(HARBOUR){
-    // shipping containers: ribbed sides, tinted per box
+  if(ZONE){
+    // shipping containers (harbour) and freight wagons (ironworks): ribbed sides, tinted per box
     const ribs=makeTex(64,32,(g,w,h)=>{ g.fillStyle='#ffffff'; g.fillRect(0,0,w,h); for(let x=0;x<w;x+=4){ g.fillStyle='rgba(0,0,0,.16)'; g.fillRect(x,0,1.5,h); } g.fillStyle='rgba(0,0,0,.22)'; g.fillRect(0,0,w,1.5); g.fillRect(0,h-1.5,w,1.5); });
     inst(new THREE.BoxGeometry(12.2,2.6,2.44),new THREE.MeshLambertMaterial({map:ribs}),containers,(c,i,im)=>{ EU.set(0,c.ry,0); Q.setFromEuler(EU); M4.compose(PV.set(c.x,c.y+1.3,c.z),Q,ONE); im.setMatrixAt(i,M4); im.setColorAt(i,TC.set(c.c).multiplyScalar(0.86+wr()*0.2)); });
     inst(new THREE.CylinderGeometry(0.22,0.28,0.7,7).translate(0,0.35,0),lam('#2b2c2b'),bollards,(b,i,im)=>{ M4.makeTranslation(b.x,0.02,b.z); im.setMatrixAt(i,M4); },false);
+    // boxcars stand 4.4 m tall; hoppers are squatter
+    inst(new THREE.BoxGeometry(14,3.4,3.0),new THREE.MeshLambertMaterial({map:ribs}),wagons,(w,i,im)=>{ M4.compose(PV.set(w.x,w.kind?2.3:2.7,w.z),Q.identity(),SC.set(w.kind?0.93:1,w.kind?0.7:1,1)); im.setMatrixAt(i,M4); im.setColorAt(i,TC.set(w.c).multiplyScalar(0.85+wr()*0.2)); });
+    inst(new THREE.BoxGeometry(12.4,0.9,2.3),lam('#262626'),wagons,(w,i,im)=>{ M4.makeTranslation(w.x,0.8,w.z); im.setMatrixAt(i,M4); },false);
   }
 }
 let sigKey='';
@@ -1251,9 +1366,9 @@ function addLane(axis,line,dir){
   }
   lanes.push(L);
 }
-// in the harbour the north-south streets end at the water, so traffic runs on the cross streets and the quay road
-for(const k of HARBOUR?[]:[-3,-1,1,3]){ addLane('z',k*P,-1); addLane('z',k*P,1); }
-for(const m of HARBOUR?[-1,1,2]:[-1,1,4,7]){ addLane('x',lineZ(m),1); addLane('x',lineZ(m),-1); }
+// in the harbour and the ironworks the north-south streets end at the district's edge, so traffic runs on the cross streets and the quay road
+for(const k of ZONE?[]:[-3,-1,1,3]){ addLane('z',k*P,-1); addLane('z',k*P,1); }
+for(const m of ZONE?[-1,1,2]:[-1,1,4,7]){ addLane('x',lineZ(m),1); addLane('x',lineZ(m),-1); }
 const moverBody=inst(carBodyGeo,lam('#ffffff'),movers,(mv,i,im)=>{ im.setColorAt(i,TC.set(mv.color)); });
 const moverCab=inst(carCabGeo,lam('#30363b'),movers,()=>{});
 function greenFor(axis){ const ph=T%24; return axis==='z'? ph<10 : (ph>=12&&ph<22); }
@@ -1740,17 +1855,17 @@ function clearFigures(){ for(const f of figures){ scene.remove(f.root); } figure
 let roofSpots=[];
 function spawnAll(nHostiles){
   clearFigures();
-  for(let i=0;i<(HARBOUR?1:2);i++) spawnStreet('hostile');
-  if(HARBOUR) for(const w of shuffle(PIER_WALKS.slice()).slice(0,2)) spawnPace('hostile',w[0].clone(),w[1].clone());   // guards walking the piers
+  for(let i=0;i<(ZONE?1:2);i++) spawnStreet('hostile');
+  if(ZONE) for(const w of shuffle(ZONE_WALKS.slice()).slice(0,2)) spawnPace('hostile',w[0].clone(),w[1].clone());   // guards walking the piers or the yard
   for(let i=0;i<12;i++) spawnStreet('bystander');
   // hostage roofs: visible rooftops 140-320 m out on different buildings, far enough apart and on
   // different enough bearings that they never stack up in the scope; new ones each mission
   const bearing=s=>Math.atan2(s.a.x-PLAYER.x,-(s.a.z-PLAYER.z));
   const hs=[];
   // only roofs out in front of your parapet (within 50 degrees of straight ahead), never off to the side along your own roof
-  // in the harbour, the docks come first (warehouses, container stacks, the ship's bridge); city roofs only fill gaps
+  // in the harbour and the ironworks, the district's own structures come first; city roofs only fill gaps
   const cand=shuffle(roofSpots.filter(s=>s.dist>=140&&s.dist<=320&&s.bld.w>=9&&Math.abs(bearing(s))<=0.87));
-  if(HARBOUR) cand.sort((p,q)=>(q.bld.desc?1:0)-(p.bld.desc?1:0));
+  if(ZONE) cand.sort((p,q)=>(q.bld.desc?1:0)-(p.bld.desc?1:0));
   for(const s of cand){
     if(hs.length>=HOSTAGES) break;
     if(hs.every(o=>o.bld!==s.bld&&Math.hypot(o.a.x-s.a.x,o.a.z-s.a.z)>=50&&Math.abs(angLerp(0,bearing(o)-bearing(s),1))>0.14)) hs.push(s);
@@ -1763,7 +1878,7 @@ function spawnAll(nHostiles){
     if(picked.every(p=>Math.abs(p.dist-s.dist)>40)) picked.push(s);
   }
   for(const s of picked) spawnPace('hostile',s.a.clone(),s.b.clone());
-  if(HARBOUR) for(const p of HARBOUR_POSTS) spawnPost(p.x,p.y,p.z);   // the crane's machinery house and the lighthouse gallery
+  if(ZONE) for(const p of ZONE_POSTS) spawnPost(p.x,p.y,p.z);   // crane house and lighthouse, or furnace platform and conveyor head
   else { spawnPost(CLOCK.x+(rnd()-0.5)*2,BELFRY,CLOCK.z+1.2); spawnPost(CRANE.x+1.3,CRANE.deck+0.35,CRANE.z+1.3); }
   pairs.length=0;
   if(hs.length) hs.forEach((s,i)=>spawnHostagePair(s,HOSTAGE_LOOKS[i])); else spawnHostagePair(null,HOSTAGE_LOOKS[0]);
@@ -1786,9 +1901,9 @@ function spawnHostagePair(spot,look){
     a=spot.a.clone(); b=spot.b.clone();
     const bl=spot.bld, n=WORDS[Math.min(bl.fl,12)];
     detail=(bl.desc||'the '+n+'-storey '+STYLE_WORD[bl.style]+' building')+', about '+Math.round(spot.dist/10)*10+' m out';
-  }else if(HARBOUR){
+  }else if(ZONE){
     const x0=(rnd()-0.5)*5, z=WATER.z1+3; a=new V3(x0-2.5,0.06,z); b=new V3(x0+2.5,0.06,z);
-    detail='on the quay';
+    detail=HARBOUR?'on the quay':'at the ironworks gate';
   }else{
     const x0=(rnd()-0.5)*5, z=PLAZA.z1-3.6; a=new V3(x0-2.5,CURB,z); b=new V3(x0+2.5,CURB,z);
     detail='in the plaza under the clock tower';
@@ -1838,7 +1953,7 @@ function freeHostage(P){
   }else{
     // run along the open ground, away from the body (the plaza in the city, the quay in the harbour)
     const side=p.x<0?-1:1;
-    h.target=HARBOUR?new V3(p.x+side*16,p.y,p.z):new V3(clamp(p.x+side*16,PLAZA.x0+2,PLAZA.x1-2),CURB,PLAZA.z1-1.5);
+    h.target=ZONE?new V3(p.x+side*16,p.y,p.z):new V3(clamp(p.x+side*16,PLAZA.x0+2,PLAZA.x1-2),CURB,PLAZA.z1-1.5);
   }
 }
 function executeHostage(P){
@@ -2217,10 +2332,10 @@ const S={state:'menu',op:'haze',time:0,score:0,shots:0,hits:0,heads:0,longest:0,
   mag:MAG,cycleT:0,reloadT:0,scoped:false,magIdx:1,breath:1,holding:false,exhausted:false,
   windSpeed:2,windDir:0,windNow:2,wind:new V3(),winAt:0,warn50:false,warn80:false,hintT:0};
 const bests={haze:0,dusk:0,fog:0};
-const BEST_KEY=HARBOUR?'highrise.best.harbour.':'highrise.best.';     // each map keeps its own best scores
+const BEST_KEY=MAP==='city'?'highrise.best.':'highrise.best.'+MAP+'.';     // each map keeps its own best scores
 try{
   for(const k in bests) bests[k]=parseInt(localStorage.getItem(BEST_KEY+k)||'0',10)||0;
-  if(!HARBOUR){ const old=parseInt(localStorage.getItem('highrise.best')||'0',10)||0; if(old>bests.haze) bests.haze=old; }
+  if(MAP==='city'){ const old=parseInt(localStorage.getItem('highrise.best')||'0',10)||0; if(old>bests.haze) bests.haze=old; }
 }catch(e){}
 const bullets=[];
 const START_PITCH=-0.2;
@@ -2701,7 +2816,7 @@ function endMission(won,why){
   const total=Math.max(0,S.score+bonus);
   const isBest=total>bests[S.op];
   if(isBest){ bests[S.op]=total; try{ localStorage.setItem(BEST_KEY+S.op,String(total)); }catch(e){} }
-  $('overOp').textContent='Debrief · '+(HARBOUR?'Harbour · ':'')+OPS[S.op].label;
+  $('overOp').textContent='Debrief · '+(MAP==='city'?'':MAP_NAMES[MAP]+' · ')+OPS[S.op].label;
   const t=$('overTitle'); t.textContent=won?'Mission complete':(pairs.some(P=>P.state==='killed')?'Hostage lost':'Compromised'); t.className='title '+(won?'win':'lose');
   $('overWhy').textContent=why;
   const rows=[
@@ -2827,7 +2942,8 @@ tbtn('tBreath',()=>{S.holding=true;$('tBreath').classList.add('on');},()=>{S.hol
 // map picker: the city is built once at load, so a new map is saved and the page reloads into it
 {
   const MAPS={city:{label:'Downtown',meta:'Streets and rooftops, the clock tower in the plaza and a building-site crane.'},
-    harbour:{label:'Harbour',meta:'Piers and warehouses, a container terminal, a moored cargo ship and a lighthouse.'}};
+    harbour:{label:'Harbour',meta:'Piers and warehouses, a container terminal, a moored cargo ship and a lighthouse.'},
+    works:{label:'Ironworks',meta:'A rail yard and factory halls, a water tower and gas holder, and a blast furnace under its chimneys.'}};
   const box=$('maps');
   const choose=k=>{
     if(k===MAP) return;
